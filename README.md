@@ -57,29 +57,29 @@ Before running the script, ensure you have the following:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/h-nusterdien/image-metadata-sync-for-google-drive.git
+   git clone https://github.com/H-Nusterdien/image-metadata-sync-for-google-drive.git
    cd image-metadata-sync-for-google-drive
    ```
 
 2. **Create a virtual environment**: Create a virtual environment to keep dependencies isolated.
    - On Windows:
-   ```bash
-   python -m venv venv
-   ```
+     ```bash
+     python -m venv venv
+     ```
    - On macOS/Linux:
-   ```bash
-   python3 -m venv venv
-   ```
+     ```bash
+     python3 -m venv venv
+     ```
 
 3. **Activate the virtual environment**:
    - On Windows:
-   ```bash
-   .\venv\Scripts\activate
-   ```
+     ```bash
+     .\venv\Scripts\activate
+     ```
    - On macOS/Linux:
-   ```bash
-   source venv/bin/activate
-   ```
+     ```bash
+     source venv/bin/activate
+     ```
 
 4. **Install dependencies**: Install the required Python packages using the `requirements.txt` file:
    ```bash
@@ -89,13 +89,13 @@ Before running the script, ensure you have the following:
 5. **Install ExifTool**: Download and install [ExifTool](https://exiftool.org/) based on your operating system
    - On Windows: Download the Windows Executable.
    - On macOS: Install using Homebrew.
-   ```bash
-   brew install exiftool
-   ```
+     ```bash
+     brew install exiftool
+     ```
    - On Linux: Install using your package manager.
-   ```bash
-   sudo apt install libimage-exiftool-perl
-   ```
+     ```bash
+     sudo apt install libimage-exiftool-perl
+     ```
 ---
 
 ## Running The Script
