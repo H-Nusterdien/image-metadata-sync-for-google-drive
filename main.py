@@ -34,7 +34,7 @@ import google_api
 
 # Constants for local folder path and Google Drive folder ID
 LOCAL_FOLDER_PATH: str = "./images"
-GOOGLE_DRIVE_FOLDER_ID: str = ""
+GOOGLE_DRIVE_FOLDER_ID: str = "1OREgh6QuyVLKhVmE3HHp8zThNgvAC8uj"
 
 
 def get_list_of_image_files(dir_path: str) -> list[str]:
@@ -92,29 +92,6 @@ def search_image_in_drive(service, folder_id: str, image_name: str) -> list[dict
     results = service.files().list(q=query, fields=fields).execute()
     files = results.get('files', [])
     return files
-
-
-def update_description_of_drive_image(service, file_id: str, new_description: str):
-    """
-    Update the description of a Google Drive image.
-
-    Args:
-        service: Google Drive API service instance.
-        file_id (str): ID of the Google Drive file to update.
-        new_description (str): New description to set for the file.
-
-    Returns:
-        dict: Updated file information from Google Drive.
-    """
-    # Create metadata body with new description
-    file_metadata: dict[str, str] = {'description': new_description}
-    # Update the file on Google Drive
-    updated_file = service.files().update(
-        fileId=file_id,
-        body=file_metadata,
-        fields="id, name, description"
-    ).execute()
-    return updated_file
 
 
 def create_description_from_tags(tags: list[str]) -> str:
@@ -180,6 +157,7 @@ def bulk_update_image_descriptions(drive_service, local_folder: str) -> None:
 
         if image_tags:
             print(f"{print_prefix} Success: Extracted tags")
+            new_description: str = create_description_from_tags(image_tags)
 
             # Search for the corresponding file in Google Drive
             drive_files: list[dict[str, str]] = search_image_in_drive(
@@ -196,7 +174,7 @@ def bulk_update_image_descriptions(drive_service, local_folder: str) -> None:
                     # Prepare the update request to modify the description
                     request = drive_service.files().update(
                         fileId=file_id,
-                        body={"description": image_tags}
+                        body={"description": new_description}
                     )
                     # Add the request to the batch
                     batch.add(request)
