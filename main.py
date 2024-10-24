@@ -34,7 +34,7 @@ import google_api
 
 # Constants for local folder path and Google Drive folder ID
 LOCAL_FOLDER_PATH: str = "./images"
-GOOGLE_DRIVE_FOLDER_ID: str = "1OREgh6QuyVLKhVmE3HHp8zThNgvAC8uj"
+GOOGLE_DRIVE_FOLDER_ID: str = ""
 
 
 def get_list_of_image_files(dir_path: str) -> list[str]:
