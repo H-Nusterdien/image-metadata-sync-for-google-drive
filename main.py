@@ -28,32 +28,35 @@ Usage:
 
 """
 
-import os
+from pathlib import Path
+
 import exiftool
 import google_api
 
+
 # Constants for local folder path and Google Drive folder ID
-LOCAL_FOLDER_PATH: str = "./images"
+LOCAL_FOLDER_NAME: str = "images"
+IMAGE_FILE_EXTENSIONS: tuple[str, ...] = (".jpg", ".jpeg", ".png")
 GOOGLE_DRIVE_FOLDER_ID: str = ""
 
 
-def get_list_of_image_files(dir_path: str) -> list[str]:
+def get_list_of_image_paths(
+        directory: str = LOCAL_FOLDER_NAME,
+        extensions: tuple[str, ...] = IMAGE_FILE_EXTENSIONS
+    ) -> list[str]:
     """
-    Get a list of image files (jpg, png, jpeg) from a specified directory.
+    Retrieves all image paths within a specified directory, including nested folders.
 
     Args:
-        dir_path (str): Path to the directory containing images.
+    - directory (str): The root directory to search for images.
+    - extensions (tuple): A tuple of file extensions to consider as images.
 
     Returns:
-        list[str]: List of image file names found in the directory.
+    - list[str]: A list of paths to all images found.
     """
-    list_of_image_files: list[str] = []
-    for image_file in os.listdir(dir_path):
-        image_file_with_lower_case: str = image_file.lower()
-        # Check if the file is an image based on its extension
-        if image_file_with_lower_case.endswith(('.jpg', '.png', '.jpeg')):
-            list_of_image_files.append(image_file)
-    return list_of_image_files
+    initial_dir = Path(directory)
+    list_of_image_paths = [str(path) for path in initial_dir.rglob("*") if path.suffix.lower() in extensions]
+    return list_of_image_paths
 
 
 def extract_tags_property(image_path: str) -> list[str]:
@@ -74,24 +77,50 @@ def extract_tags_property(image_path: str) -> list[str]:
     return tags
 
 
-def search_image_in_drive(service, folder_id: str, image_name: str) -> list[dict[str, str]]:
+def search_image_in_drive(
+        service,
+        image_path: str,
+        root_folder_id: str = GOOGLE_DRIVE_FOLDER_ID
+    ) -> list[dict[str, str]]:
     """
-    Search for an image in a specific Google Drive folder by its name.
+    Search for an image in Google Drive by mirroring the structure of the local path.
 
     Args:
         service: Google Drive API service instance.
-        folder_id (str): Google Drive folder ID to search within.
-        image_name (str): Name of the image to search for.
+        root_folder_id (str): Google Drive folder ID to start searching within.
+        local_path (str): Local file path to mirror in Google Drive.
 
     Returns:
-        list: List of files found in Google Drive with matching name.
+        list[dict[str, str]]: List of files found in Google Drive with matching name and structure.
     """
-    # Build query to search for image in specified folder
-    query: str = f"'{folder_id}' in parents and name = '{image_name}'"
-    fields: str = "files(id, name)"
-    results = service.files().list(q=query, fields=fields).execute()
-    files = results.get('files', [])
-    return files
+    # Split the local path into parts for each folder level
+    path_parts = image_path.split('/')
+
+    # Initialize the folder ID to start with
+    current_folder_id = root_folder_id
+
+    # Iterate through the path parts, assuming the last part is the file name
+    for part in path_parts[:-1]:  # Exclude the last part (the file name)
+        query = f"'{current_folder_id}' in parents and name = '{part}' and mimeType = 'application/vnd.google-apps.folder'"
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        folders = results.get('files', [])
+
+        if not folders:
+            print(f"Folder '{part}' not found in the expected structure.")
+            return []  # If any folder in the path isn't found, the structure doesn't match
+        else:
+            current_folder_id = folders[0]['id']  # Move to the next folder
+
+    # Final search for the image file in the last matched folder
+    image_name = path_parts[-1]
+    image_query = (
+        f"'{current_folder_id}' in parents and name contains '{image_name}' "
+        f"and mimeType contains 'image/'"
+    )
+    image_results = service.files().list(q=image_query, fields="files(id, name)").execute()
+    image_files = image_results.get('files', [])
+
+    return image_files
 
 
 def create_description_from_tags(tags: list[str]) -> str:
@@ -128,18 +157,22 @@ def batch_callback(request_id, response, exception) -> None:
         print(f"+ Successfully updated Google Drive image file | {response.get('name')}")
 
 
-def bulk_update_image_descriptions(drive_service, local_folder: str) -> None:
+def bulk_update_image_descriptions(
+        drive_service,
+        local_folder_name: str = LOCAL_FOLDER_NAME
+    ) -> None:
     """
     Perform a bulk update of image descriptions in Google Drive based on local image metadata.
 
     Args:
-        local_folder (str): Path to the folder containing local images.
+        local_folder_name (str): Path to the folder containing local images.
         drive_service: Google Drive API service instance.
     """
-    image_files: list[str] = get_list_of_image_files(LOCAL_FOLDER_PATH)
+    list_of_image_paths: list[str] = get_list_of_image_paths()
+
     print_prefix: str = "\t -->"
 
-    if not image_files:
+    if not list_of_image_paths:
         # No image files found in the folder
         print(f"{print_prefix} Failed: No image files found in the folder.")
         return
@@ -147,23 +180,23 @@ def bulk_update_image_descriptions(drive_service, local_folder: str) -> None:
     # Create a batch request object for Google Drive API
     batch = drive_service.new_batch_http_request(callback=batch_callback)
 
-    for image_file in image_files:
-        print(f"In Progress: {image_file}")
-
-        file_path: str = os.path.join(local_folder, image_file)
+    for image_path in list_of_image_paths:
+        print(f"In Progress: {image_path}")
 
         # Extract the metadata (tags) from the local image file
-        image_tags: list[str] = extract_tags_property(file_path)
+        image_tags: list[str] = extract_tags_property(image_path)
+        # Remove the local folder name from the image path
+        image_path = image_path.replace(f"{local_folder_name}/", "")
 
         if image_tags:
             print(f"{print_prefix} Success: Extracted tags")
+
             new_description: str = create_description_from_tags(image_tags)
 
             # Search for the corresponding file in Google Drive
             drive_files: list[dict[str, str]] = search_image_in_drive(
                 drive_service,
-                GOOGLE_DRIVE_FOLDER_ID,
-                image_file
+                image_path
             )
 
             if drive_files:
@@ -211,7 +244,7 @@ def main() -> None:
     # Initialize the Google Drive API service
     google_drive_service = google_api.create_service("drive")
     # Perform bulk update of image descriptions
-    bulk_update_image_descriptions(google_drive_service, LOCAL_FOLDER_PATH)
+    bulk_update_image_descriptions(google_drive_service)
 
     print(print_script_end)
 
