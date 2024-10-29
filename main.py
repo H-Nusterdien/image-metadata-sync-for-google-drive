@@ -55,7 +55,10 @@ def get_list_of_image_paths(
     - list[str]: A list of paths to all images found.
     """
     initial_dir = Path(directory)
-    list_of_image_paths = [str(path) for path in initial_dir.rglob("*") if path.suffix.lower() in extensions]
+    list_of_image_paths = [
+        str(path) for path in initial_dir.rglob("*")
+        if path.suffix.lower() in extensions
+    ]
     return list_of_image_paths
 
 
@@ -73,7 +76,7 @@ def extract_tags_property(image_path: str) -> list[str]:
         # Extract metadata from the image
         metadata = et.execute_json(image_path)
     # Get the 'IPTC:Keywords' field from the metadata
-    tags: list[str] = metadata[0]["IPTC:Keywords"]
+    tags: list[str] = metadata[0].get("IPTC:Keywords", [])
     return tags
 
 
@@ -101,7 +104,8 @@ def search_image_in_drive(
 
     # Iterate through the path parts, assuming the last part is the file name
     for part in path_parts[:-1]:  # Exclude the last part (the file name)
-        query = f"'{current_folder_id}' in parents and name = '{part}' and mimeType = 'application/vnd.google-apps.folder'"
+        query = f"'{current_folder_id}' in parents and name = '{part}' \
+                and mimeType = 'application/vnd.google-apps.folder'"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         folders = results.get('files', [])
 
@@ -160,7 +164,7 @@ def batch_callback(request_id, response, exception) -> None:
 def bulk_update_image_descriptions(
         drive_service,
         local_folder_name: str = LOCAL_FOLDER_NAME
-    ) -> None:
+    ) -> dict[str, list[str]]:
     """
     Perform a bulk update of image descriptions in Google Drive based on local image metadata.
 
@@ -169,6 +173,8 @@ def bulk_update_image_descriptions(
         drive_service: Google Drive API service instance.
     """
     list_of_image_paths: list[str] = get_list_of_image_paths()
+    successful_image_paths: list[str] = []
+    failed_image_paths: list[str] = []
 
     print_prefix: str = "\t -->"
 
@@ -211,10 +217,13 @@ def bulk_update_image_descriptions(
                     )
                     # Add the request to the batch
                     batch.add(request)
+                    successful_image_paths.append(image_path)
                     print(f"{print_prefix} Success: File added to batch processing")
             else:
+                failed_image_paths.append(image_path)
                 print(f"{print_prefix} Failed: No matching file found in Google Drive")
         else:
+            failed_image_paths.append(image_path)
             print(f"{print_prefix} Failed: No tags found")
 
         print()
@@ -226,6 +235,19 @@ def bulk_update_image_descriptions(
 
     # Execute the batch request to update all files
     batch.execute()
+
+    return {
+        "successful_image_paths": successful_image_paths,
+        "failed_image_paths": failed_image_paths
+    }
+
+
+def export_result_to_file(result: list[str], file_name: str) -> None:
+    """
+    Export results from a list to a given file name.
+    """
+    with open(file_name, 'w', encoding="utf-8") as file:
+        file.write('\n'.join(result))
 
 
 def main() -> None:
@@ -244,7 +266,13 @@ def main() -> None:
     # Initialize the Google Drive API service
     google_drive_service = google_api.create_service("drive")
     # Perform bulk update of image descriptions
-    bulk_update_image_descriptions(google_drive_service)
+    result: dict[str, list[str]] = bulk_update_image_descriptions(google_drive_service)
+
+    # Export result of failed image paths to a .txt file
+    if result["failed_image_paths"]:
+        export_result_to_file(result["failed_image_paths"], "failed_image_paths.txt")
+    # Export result of successful image paths to a .txt file
+    export_result_to_file(result["successful_image_paths"], "successful_image_paths.txt")
 
     print(print_script_end)
 
